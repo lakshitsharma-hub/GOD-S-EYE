@@ -2,7 +2,11 @@ import os
 import time
 import requests
 import ccxt
-import tweepy
+import hmac
+import hashlib
+import base64
+import urllib.parse
+import secrets
 from flask import Flask
 from threading import Thread
 
@@ -17,39 +21,23 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 # ==============================================================================
-# 🔐 SECURE MULTI-CREDENTIALS ARCHITECTURE (UPGRADED FOR OAUTH 1.0A)
+# 🔐 SECURE MULTI-CREDENTIALS ARCHITECTURE
 # ==============================================================================
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-# Complete Write-Access API Keys for Twitter Automation Matrix
 X_API_KEY = os.environ.get("X_API_KEY")
 X_API_SECRET = os.environ.get("X_API_SECRET")
 X_ACCESS_TOKEN = os.environ.get("X_ACCESS_TOKEN")
 X_ACCESS_SECRET = os.environ.get("X_ACCESS_SECRET")
-
-# Safe Tweepy Initialization for v2 Post Execution
-x_client = None
-if X_API_KEY and X_API_SECRET and X_ACCESS_TOKEN and X_ACCESS_SECRET:
-    try:
-        x_client = tweepy.Client(
-            consumer_key=X_API_KEY,
-            consumer_secret=X_API_SECRET,
-            access_token=X_ACCESS_TOKEN,
-            access_token_secret=X_ACCESS_SECRET
-        )
-        print("[+] Twitter X API v2 Client Secured Successfully.")
-    except Exception as e:
-        print(f"[-] Twitter Initialization Fault: {e}")
 
 exchange = ccxt.binance({
     'enableRateLimit': True,
     'options': {'defaultType': 'future'}
 })
 
-# 🌍 MULTI-ASSET EXPANSION MATRIX (Top 10 High Volume Crypto Assets)
 SYMBOLS = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT',
     'DOT/USDT', 'LINK/USDT', 'BNB/USDT', 'DOGE/USDT', 'AVAX/USDT'
@@ -67,6 +55,62 @@ market_states = {
 }
 
 # ==============================================================================
+# 🐦 DIRECT X (TWITTER) OAUTH 1.0A HANDLER (Bypassing Tweepy Version Bug)
+# ==============================================================================
+def post_to_x_platform(tweet_text):
+    if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET]):
+        print("[*] Skipping X broadcast: API credentials unassigned.")
+        return
+
+    url = "https://api.twitter.com/2/tweets"
+    method = "POST"
+    
+    # Generate OAuth Parameters
+    nonce = secrets.token_hex(16)
+    timestamp = str(int(time.time()))
+    
+    oauth_params = {
+        "oauth_consumer_key": X_API_KEY,
+        "oauth_nonce": nonce,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": timestamp,
+        "oauth_token": X_ACCESS_TOKEN,
+        "oauth_version": "1.0"
+    }
+    
+    # Create Signature Base String
+    combined_params = oauth_params.copy()
+    encoded_params = {urllib.parse.quote(k, safe=''): urllib.parse.quote(v, safe='') for k, v in combined_params.items()}
+    sorted_params = sorted(encoded_params.items())
+    param_string = "&".join([f"{k}={v}" for k, v in sorted_params])
+    
+    base_string = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_string, safe='')}"
+    signing_key = f"{urllib.parse.quote(X_API_SECRET, safe='')}&{urllib.parse.quote(X_ACCESS_SECRET, safe='')}"
+    
+    # Generate HMAC-SHA1 Signature
+    signature = hmac.new(signing_key.encode('utf-8'), base_string.encode('utf-8'), hashlib.sha1)
+    oauth_params["oauth_signature"] = base64.b64encode(signature.digest()).decode('utf-8')
+    
+    # Build Authorization Header
+    auth_header_parts = [f'{urllib.parse.quote(k)}="{urllib.parse.quote(v)}"' for k, v in oauth_params.items()]
+    auth_header = "OAuth " + ", ".join(auth_header_parts)
+    
+    headers = {
+        "Authorization": auth_header,
+        "Content-Type": "application/json"
+    }
+    payload = {"text": tweet_text}
+    
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 201:
+            print("[+] Automated Marketing Post successfully fired on X.com!")
+        else:
+            print(f"[-] X API Refusal: Status Code {res.status_code} - {res.text}")
+    except Exception as e:
+        print(f"[-] Direct X Pipeline Exception: {e}")
+
+# ==============================================================================
 # 📢 DISTRIBUTION CORES
 # ==============================================================================
 def send_telegram_alert(message):
@@ -76,16 +120,6 @@ def send_telegram_alert(message):
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Telegram Delivery Failed: {e}")
-
-def post_to_x_platform(tweet_text):
-    if not x_client:
-        print("[*] Skipping X broadcast: API keys are unassigned in Render settings.")
-        return
-    try:
-        x_client.create_tweet(text=tweet_text)
-        print("[+] Automated Marketing Post successfully fired on X.com!")
-    except Exception as e:
-        print(f"[-] X Platform Broadcast Failure: {e}")
 
 def push_signal_to_notion_journal(asset, signal_type, entry_price):
     if not NOTION_TOKEN or not NOTION_DATABASE_ID:
