@@ -2,34 +2,58 @@ import os
 import time
 import requests
 import ccxt
+import tweepy
 from flask import Flask
 from threading import Thread
-from datetime import datetime, timezone
 
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "GOD'S EYE Enterprise Dual-Engine is active 24/7."
+    return "GOD'S EYE Omni-Channel Enterprise Engine is active 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 # ==============================================================================
-# 🔐 SECURE CREDENTIALS ARCHITECTURE
+# 🔐 SECURE MULTI-CREDENTIALS ARCHITECTURE (UPGRADED FOR OAUTH 1.0A)
 # ==============================================================================
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
+# Complete Write-Access API Keys for Twitter Automation Matrix
+X_API_KEY = os.environ.get("X_API_KEY")
+X_API_SECRET = os.environ.get("X_API_SECRET")
+X_ACCESS_TOKEN = os.environ.get("X_ACCESS_TOKEN")
+X_ACCESS_SECRET = os.environ.get("X_ACCESS_SECRET")
+
+# Safe Tweepy Initialization for v2 Post Execution
+x_client = None
+if X_API_KEY and X_API_SECRET and X_ACCESS_TOKEN and X_ACCESS_SECRET:
+    try:
+        x_client = tweepy.Client(
+            consumer_key=X_API_KEY,
+            consumer_secret=X_API_SECRET,
+            access_token=X_ACCESS_TOKEN,
+            access_token_secret=X_ACCESS_SECRET
+        )
+        print("[+] Twitter X API v2 Client Secured Successfully.")
+    except Exception as e:
+        print(f"[-] Twitter Initialization Fault: {e}")
+
 exchange = ccxt.binance({
     'enableRateLimit': True,
     'options': {'defaultType': 'future'}
 })
 
-SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT']
+# 🌍 MULTI-ASSET EXPANSION MATRIX (Top 10 High Volume Crypto Assets)
+SYMBOLS = [
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT',
+    'DOT/USDT', 'LINK/USDT', 'BNB/USDT', 'DOGE/USDT', 'AVAX/USDT'
+]
 TIMEFRAME = '4h'
 LEFT_BARS = 5
 RIGHT_BARS = 5
@@ -43,7 +67,7 @@ market_states = {
 }
 
 # ==============================================================================
-# 🗣️ BROADCAST & LEDGER JOURNAL CONTROLLERS
+# 📢 DISTRIBUTION CORES
 # ==============================================================================
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -52,6 +76,16 @@ def send_telegram_alert(message):
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Telegram Delivery Failed: {e}")
+
+def post_to_x_platform(tweet_text):
+    if not x_client:
+        print("[*] Skipping X broadcast: API keys are unassigned in Render settings.")
+        return
+    try:
+        x_client.create_tweet(text=tweet_text)
+        print("[+] Automated Marketing Post successfully fired on X.com!")
+    except Exception as e:
+        print(f"[-] X Platform Broadcast Failure: {e}")
 
 def push_signal_to_notion_journal(asset, signal_type, entry_price):
     if not NOTION_TOKEN or not NOTION_DATABASE_ID:
@@ -85,19 +119,20 @@ def push_signal_to_notion_journal(asset, signal_type, entry_price):
 def send_deployment_success():
     coins_str = ", ".join([s.split('/')[0] for s in SYMBOLS])
     startup_msg = (
-        "⚡ *GOD'S EYE DUAL-LEDGER ENGINE ONLINE*\n"
+        "⚡ *GOD'S EYE HIGH-VOLUME OMNI-ENGINE ONLINE*\n"
         "───────────────────────\n"
         "🌐 *Status:* Successfully Deployed on Cloud\n"
         f"📊 *Timeframe:* {TIMEFRAME}\n"
         f"📓 *Journal:* Notion Public Ledger Connected\n"
-        f"🎯 *Scanning Assets:* [{coins_str}]\n"
+        f"🐦 *Marketing:* Twitter X Write Pipeline Armed\n"
+        f"🎯 *Total Assets Loaded:* `{len(SYMBOLS)} Coins`\n"
         "───────────────────────\n"
-        "📡 _Tracking BUY & SELL institutional zones with automated audit logs..._"
+        f"📡 _Monitoring: [{coins_str}]_"
     )
     send_telegram_alert(startup_msg)
 
 # ==============================================================================
-# 🧠 CORE MATHEMATICAL ENGINE (DUAL EXECUTION LAYER)
+# 🧠 CORE MATHEMATICAL ENGINE
 # ==============================================================================
 def check_market_signals(symbol):
     state = market_states[symbol]
@@ -172,13 +207,19 @@ def check_market_signals(symbol):
             
             if buy_triggered:
                 msg = f"🟢 *GOD'S EYE BUY TRIGGERED!*\nAsset: #{coin_name}\nPrice: {latest_close}\nTimeframe: {TIMEFRAME}\n📌 _Logged to Notion Journal_"
-                push_signal_to_notion_journal(coin_name, "LONG [OB-MITIGATION]", latest_close)
                 send_telegram_alert(msg)
+                push_signal_to_notion_journal(coin_name, "LONG [OB-MITIGATION]", latest_close)
+                
+                tweet = f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🟢 LONG (BUY) TRIGGERED: #{coin_name}\n📊 Entry Zone Price: {latest_close}\n⏱️ Timeframe: {TIMEFRAME}\n\n100% Transparent ledger tracking active. Link in bio! 📈🚀"
+                post_to_x_platform(tweet)
                 
             elif sell_triggered:
                 msg = f"🔴 *GOD'S EYE SELL TRIGGERED!*\nAsset: #{coin_name}\nPrice: {latest_close}\nTimeframe: {TIMEFRAME}\n📌 _Logged to Notion Journal_"
-                push_signal_to_notion_journal(coin_name, "SHORT [OB-MITIGATION]", latest_close)
                 send_telegram_alert(msg)
+                push_signal_to_notion_journal(coin_name, "SHORT [OB-MITIGATION]", latest_close)
+                
+                tweet = f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🔴 SHORT (SELL) TRIGGERED: #{coin_name}\n📊 Entry Zone Price: {latest_close}\n⏱️ Timeframe: {TIMEFRAME}\n\nStrict execution rules applied. Track our ledger live! 📉🔥"
+                post_to_x_platform(tweet)
                 
     except Exception as e:
         print(f"Error scanning {symbol}: {e}")
@@ -196,5 +237,5 @@ if __name__ == "__main__":
     t = Thread(target=run_flask)
     t.start()
     
-    print("Launching Integrated Multi-Asset Dual-Ledger loop...")
+    print("Launching Omni-Channel High-Volume Automated Array...")
     engine_loop()
