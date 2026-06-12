@@ -7,7 +7,6 @@ import hashlib
 import base64
 import urllib.parse
 import secrets
-import json
 from flask import Flask
 from threading import Thread
 
@@ -15,7 +14,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "GOD'S EYE Omni-Channel Enterprise Engine [V8.2 Production] is active 24/7."
+    return "GOD'S EYE Omni-Channel Enterprise Engine [V8.3 Production] is active 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -51,7 +50,7 @@ SWEEP_LOOKBACK = 8
 RVOL_MULT = 1.2
 BODY_RATIO_MIN = 0.45
 ZONE_BUFFER_PCT = 0.002 # 0.2%
-CACHE_FILE = "last_alerts.json"
+LEDGER_FILE = "signals_logged.txt"
 
 market_states = {
     symbol: {
@@ -84,25 +83,28 @@ def calc_sma(values, period):
     return sum(values[-period:]) / period
 
 # ==============================================================================
-# 💾 PERSISTENT JSON DE-DUPLICATION ENGINE
+# 💾 FLAT-FILE LEDGER DE-DUPLICATION ENGINE
 # ==============================================================================
-def load_alerts_cache():
-    """Loads the deduplication JSON tracking file."""
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r') as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_alerts_cache(cache):
-    """Saves the updated state dict to the JSON tracking file."""
+def is_signal_logged(signal_id):
+    """Checks the local text file to see if the exact symbol+timestamp was already triggered."""
+    if not os.path.exists(LEDGER_FILE):
+        return False
     try:
-        with open(CACHE_FILE, 'w') as f:
-            json.dump(cache, f)
+        with open(LEDGER_FILE, 'r') as f:
+            # Read all lines and strip newlines for exact matching
+            logged_signals = f.read().splitlines()
+            return signal_id in logged_signals
     except Exception as e:
-        print(f"[-] Cache Write Error: {e}")
+        print(f"[-] Ledger Read Error: {e}")
+        return False
+
+def append_to_ledger(signal_id):
+    """Appends the executed symbol+timestamp to the text file to lock out duplicates."""
+    try:
+        with open(LEDGER_FILE, 'a') as f:
+            f.write(f"{signal_id}\n")
+    except Exception as e:
+        print(f"[-] Ledger Write Error: {e}")
 
 # ==============================================================================
 # 🐦 DIRECT X (TWITTER) OAUTH 1.0A HANDLER
@@ -191,11 +193,11 @@ def push_signal_to_notion_journal(asset, signal_type, entry_price, sl, tp):
 def send_deployment_success():
     coins_str = ", ".join([s.split('/')[0] for s in SYMBOLS])
     startup_msg = (
-        "⚡ *GOD'S EYE V8.2 FINAL PRODUCTION ONLINE*\n"
+        "⚡ *GOD'S EYE V8.3 FINAL PRODUCTION ONLINE*\n"
         "───────────────────────\n"
         "🌐 *Status:* Cloud Containers Synchronized\n"
         f"📊 *Execution:* {TIMEFRAME} Matrix\n"
-        f"💾 *Persistence:* Unified JSON Signal Lock Active\n"
+        f"💾 *Persistence:* Flat-File Text Ledger Active\n"
         f"🎯 *Assets:* `{len(SYMBOLS)} Loaded`\n"
         "───────────────────────\n"
         f"📡 _Safe Scanning: [{coins_str}]_"
@@ -203,7 +205,7 @@ def send_deployment_success():
     send_telegram_alert(startup_msg)
 
 # ==============================================================================
-# 🧠 CORE MATHEMATICAL ENGINE (V8 DE-DUPED JSON)
+# 🧠 CORE MATHEMATICAL ENGINE (V8 FLAT-FILE LEDGER LOCK)
 # ==============================================================================
 def check_market_signals(symbol):
     state = market_states[symbol]
@@ -300,19 +302,18 @@ def check_market_signals(symbol):
                 state['bear_ob'] = None
 
         # ==============================================================================
-        # 6. HARD PRODUCTION SAFETY NET: UNIFIED JSON DEDUPLICATION
+        # 6. HARD PRODUCTION SAFETY NET: FLAT-FILE LEDGER TRACKING
         # ==============================================================================
         if buy_triggered or sell_triggered:
-            alerts_cache = load_alerts_cache()
-            cache_key = f"{symbol}_{t_time}"
+            safe_symbol = symbol.replace("/", "_")
+            signal_id = f"{safe_symbol}_{t_time}"
             
-            # If this precise symbol+timestamp exists in the JSON, silently terminate
-            if alerts_cache.get(cache_key):
+            # If this precise signal_id is in the text file, silently drop execution
+            if is_signal_logged(signal_id):
                 return
                 
-            # Lock the JSON state IMMEDIATELY before executing webhooks
-            alerts_cache[cache_key] = True
-            save_alerts_cache(alerts_cache)
+            # Lock the text file IMMEDIATELY before executing webhooks
+            append_to_ledger(signal_id)
             
             coin_name = symbol.split('/')[0]
             current_atr = calc_atr(highs[:-1], lows[:-1], closes[:-1], 14)
