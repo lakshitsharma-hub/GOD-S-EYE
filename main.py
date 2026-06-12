@@ -14,7 +14,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "GOD'S EYE Omni-Channel Enterprise Engine [V8] is active 24/7."
+    return "GOD'S EYE Omni-Channel Enterprise Engine [V8.1 Stable] is active 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -50,12 +50,16 @@ SWEEP_LOOKBACK = 8
 RVOL_MULT = 1.2
 BODY_RATIO_MIN = 0.45
 ZONE_BUFFER_PCT = 0.002 # 0.2%
+CACHE_DIR = "signal_cache"
+
+# Ensure persistence directory exists locally
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
 
 market_states = {
     symbol: {
-        'bull_ob': None, # Dict: {'low': float, 'high': float}
-        'bear_ob': None,
-        'last_signal_time': None
+        'bull_ob': None, 
+        'bear_ob': None
     } for symbol in SYMBOLS
 }
 
@@ -81,6 +85,31 @@ def calc_atr(highs, lows, closes, period=14):
 def calc_sma(values, period):
     if len(values) < period: return 0
     return sum(values[-period:]) / period
+
+# ==============================================================================
+# 💾 PERSISTENT SIGNAL DE-DUPLICATION ENGINE
+# ==============================================================================
+def get_last_logged_timestamp(symbol):
+    """Reads the last fired signal timestamp for a specific asset from disk."""
+    safe_name = symbol.replace("/", "_")
+    filepath = os.path.join(CACHE_DIR, f"sig_cache_{safe_name}.txt")
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r") as f:
+                return f.read().strip()
+        except:
+            return None
+    return None
+
+def set_last_logged_timestamp(symbol, timestamp):
+    """Writes the successfully executed signal timestamp to disk to lock out duplicates."""
+    safe_name = symbol.replace("/", "_")
+    filepath = os.path.join(CACHE_DIR, f"sig_cache_{safe_name}.txt")
+    try:
+        with open(filepath, "w") as f:
+            f.write(str(timestamp))
+    except Exception as e:
+        print(f"[-] Local Cache Write Error for {symbol}: {e}")
 
 # ==============================================================================
 # 🐦 DIRECT X (TWITTER) OAUTH 1.0A HANDLER
@@ -169,19 +198,19 @@ def push_signal_to_notion_journal(asset, signal_type, entry_price, sl, tp):
 def send_deployment_success():
     coins_str = ", ".join([s.split('/')[0] for s in SYMBOLS])
     startup_msg = (
-        "⚡ *GOD'S EYE V8 ENGINE ONLINE*\n"
+        "⚡ *GOD'S EYE V8.1 PRODUCTION ENGINE ONLINE*\n"
         "───────────────────────\n"
-        "🌐 *Status:* Cloud Active\n"
-        f"📊 *Execution:* {TIMEFRAME} Timeframe\n"
-        f"🛡️ *Risk Target:* Strict 1:2 R:R\n"
-        f"🎯 *Assets:* `{len(SYMBOLS)} Coins`\n"
+        "🌐 *Status:* Cloud Containers Synchronized\n"
+        f"📊 *Execution:* {TIMEFRAME} Matrix\n"
+        f"💾 *Persistence Cache:* Local Disk-Level Active\n"
+        f"🎯 *Assets:* `{len(SYMBOLS)} Loaded`\n"
         "───────────────────────\n"
-        f"📡 _Monitoring: [{coins_str}]_"
+        f"📡 _Safe Scanning: [{coins_str}]_"
     )
     send_telegram_alert(startup_msg)
 
 # ==============================================================================
-# 🧠 CORE MATHEMATICAL ENGINE (V8 PRODUCTION PATCHED)
+# 🧠 CORE MATHEMATICAL ENGINE (V8 PRODUCTION DE-DUPED)
 # ==============================================================================
 def check_market_signals(symbol):
     state = market_states[symbol]
@@ -205,9 +234,6 @@ def check_market_signals(symbol):
         vols = [b[5] for b in bars]
         
         # 3. Pivot & OB Scanning 
-        # idx tracks the exact bar being evaluated for a pivot.
-        # -2 is the recently closed bar. To confirm a pivot, we need PIVOT_LOOKBACK (3) bars closed after it.
-        # Therefore, the most recent verifiable pivot anchor sits at -5.
         idx = -2 - PIVOT_LOOKBACK 
         
         pivot_high_val = highs[idx]
@@ -219,7 +245,7 @@ def check_market_signals(symbol):
         is_pivot_high = all(pivot_high_val >= highs[idx-i] for i in range(1, PIVOT_LOOKBACK+1)) and \
                         all(pivot_high_val >= highs[idx+i] for i in range(1, PIVOT_LOOKBACK+1))
 
-        # Sweep & FVG Checks using Forward-Time Addition (idx + 2)
+        # Sweep & FVG Checks via Forward-Time Tracking
         if is_pivot_low:
             lowest_recent = min(lows[idx-SWEEP_LOOKBACK:idx]) if len(lows[:idx]) >= SWEEP_LOOKBACK else pivot_low_val
             was_swept = pivot_low_val < lowest_recent
@@ -236,14 +262,14 @@ def check_market_signals(symbol):
             if was_swept and has_fvg:
                 state['bear_ob'] = {'high': pivot_high_val, 'low': min(opens[idx], closes[idx])}
 
-        # 4. Confirmation Validation Math Anchored strictly to Closed Bar (-2)
+        # 4. Confirmation Validation Math Anchored to Closed Bar (-2)
         t_open, t_high, t_low, t_close, t_vol = opens[-2], highs[-2], lows[-2], closes[-2], vols[-2]
-        t_time = bars[-2][0]
+        t_time = str(bars[-2][0]) # Extract string format for precise disk cross-referencing
         
         is_htf_bullish = t_close > daily_ema_50
         is_htf_bearish = t_close < daily_ema_50
 
-        # Calculate SMA of volume from the 10 bars *prior* to the closed trigger bar
+        # Calculate volume SMA from historical buffer preceding the trigger bar
         vol_sma = calc_sma(vols[:-2], 10) 
         rvol = (t_vol / vol_sma) if vol_sma > 0 else 1.0
         is_high_vol = rvol >= RVOL_MULT
@@ -262,30 +288,38 @@ def check_market_signals(symbol):
         buy_triggered = False
         sell_triggered = False
         
-        # LONG CHECK
+        # LONG MITIGATION ENGINE
         if state['bull_ob'] and is_htf_bullish:
             ob = state['bull_ob']
             touch_zone = (t_low <= (ob['high'] + buffer_val)) and (t_high >= ob['low'])
             
             if touch_zone and is_green and is_high_vol and is_solid_body:
                 buy_triggered = True
-                state['bull_ob'] = None # Clear OB on successful mitigation
+                state['bull_ob'] = None 
                 
-        # SHORT CHECK
+        # SHORT MITIGATION ENGINE
         if state['bear_ob'] and is_htf_bearish:
             ob = state['bear_ob']
             touch_zone = (t_high >= (ob['low'] - buffer_val)) and (t_low <= ob['high'])
             
             if touch_zone and is_red and is_high_vol and is_solid_body:
                 sell_triggered = True
-                state['bear_ob'] = None # Clear OB on successful mitigation
+                state['bear_ob'] = None
 
-        # 6. Execution Logging & Strict ATR Brackets
-        if (buy_triggered or sell_triggered) and state['last_signal_time'] != t_time:
-            state['last_signal_time'] = t_time
-            coin_name = symbol.split('/')[0]
+        # ==============================================================================
+        # 6. HARD PRODUCTION SAFETY NET: DISK-LEVEL DEDUPLICATION
+        # ==============================================================================
+        if buy_triggered or sell_triggered:
+            last_logged = get_last_logged_timestamp(symbol)
             
-            # ATR calculated exactly on the dataset up to the closed trigger bar
+            # If this candle timestamp has already been processed by the engine, terminate immediately.
+            if last_logged == t_time:
+                return
+                
+            # Otherwise, lock the disk cache for this timestamp immediately before firing APIs
+            set_last_logged_timestamp(symbol, t_time)
+            
+            coin_name = symbol.split('/')[0]
             current_atr = calc_atr(highs[:-1], lows[:-1], closes[:-1], 14)
             
             if buy_triggered:
@@ -318,8 +352,8 @@ def engine_loop():
     while True:
         for symbol in SYMBOLS:
             check_market_signals(symbol)
-            time.sleep(2) # Prevent CCXT Rate Limiting
-        time.sleep(60) # Array cycle rest
+            time.sleep(2) 
+        time.sleep(60) 
 
 if __name__ == "__main__":
     print("Initializing Flask server thread...")
