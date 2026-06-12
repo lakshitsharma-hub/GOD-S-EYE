@@ -7,6 +7,7 @@ import hashlib
 import base64
 import urllib.parse
 import secrets
+import json
 from flask import Flask
 from threading import Thread
 
@@ -14,7 +15,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "GOD'S EYE Omni-Channel Enterprise Engine [V8.1 Stable] is active 24/7."
+    return "GOD'S EYE Omni-Channel Enterprise Engine [V8.2 Production] is active 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -50,11 +51,7 @@ SWEEP_LOOKBACK = 8
 RVOL_MULT = 1.2
 BODY_RATIO_MIN = 0.45
 ZONE_BUFFER_PCT = 0.002 # 0.2%
-CACHE_DIR = "signal_cache"
-
-# Ensure persistence directory exists locally
-if not os.path.exists(CACHE_DIR):
-    os.makedirs(CACHE_DIR)
+CACHE_FILE = "last_alerts.json"
 
 market_states = {
     symbol: {
@@ -87,29 +84,25 @@ def calc_sma(values, period):
     return sum(values[-period:]) / period
 
 # ==============================================================================
-# 💾 PERSISTENT SIGNAL DE-DUPLICATION ENGINE
+# 💾 PERSISTENT JSON DE-DUPLICATION ENGINE
 # ==============================================================================
-def get_last_logged_timestamp(symbol):
-    """Reads the last fired signal timestamp for a specific asset from disk."""
-    safe_name = symbol.replace("/", "_")
-    filepath = os.path.join(CACHE_DIR, f"sig_cache_{safe_name}.txt")
-    if os.path.exists(filepath):
+def load_alerts_cache():
+    """Loads the deduplication JSON tracking file."""
+    if os.path.exists(CACHE_FILE):
         try:
-            with open(filepath, "r") as f:
-                return f.read().strip()
-        except:
-            return None
-    return None
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
 
-def set_last_logged_timestamp(symbol, timestamp):
-    """Writes the successfully executed signal timestamp to disk to lock out duplicates."""
-    safe_name = symbol.replace("/", "_")
-    filepath = os.path.join(CACHE_DIR, f"sig_cache_{safe_name}.txt")
+def save_alerts_cache(cache):
+    """Saves the updated state dict to the JSON tracking file."""
     try:
-        with open(filepath, "w") as f:
-            f.write(str(timestamp))
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache, f)
     except Exception as e:
-        print(f"[-] Local Cache Write Error for {symbol}: {e}")
+        print(f"[-] Cache Write Error: {e}")
 
 # ==============================================================================
 # 🐦 DIRECT X (TWITTER) OAUTH 1.0A HANDLER
@@ -198,11 +191,11 @@ def push_signal_to_notion_journal(asset, signal_type, entry_price, sl, tp):
 def send_deployment_success():
     coins_str = ", ".join([s.split('/')[0] for s in SYMBOLS])
     startup_msg = (
-        "⚡ *GOD'S EYE V8.1 PRODUCTION ENGINE ONLINE*\n"
+        "⚡ *GOD'S EYE V8.2 FINAL PRODUCTION ONLINE*\n"
         "───────────────────────\n"
         "🌐 *Status:* Cloud Containers Synchronized\n"
         f"📊 *Execution:* {TIMEFRAME} Matrix\n"
-        f"💾 *Persistence Cache:* Local Disk-Level Active\n"
+        f"💾 *Persistence:* Unified JSON Signal Lock Active\n"
         f"🎯 *Assets:* `{len(SYMBOLS)} Loaded`\n"
         "───────────────────────\n"
         f"📡 _Safe Scanning: [{coins_str}]_"
@@ -210,7 +203,7 @@ def send_deployment_success():
     send_telegram_alert(startup_msg)
 
 # ==============================================================================
-# 🧠 CORE MATHEMATICAL ENGINE (V8 PRODUCTION DE-DUPED)
+# 🧠 CORE MATHEMATICAL ENGINE (V8 DE-DUPED JSON)
 # ==============================================================================
 def check_market_signals(symbol):
     state = market_states[symbol]
@@ -264,7 +257,7 @@ def check_market_signals(symbol):
 
         # 4. Confirmation Validation Math Anchored to Closed Bar (-2)
         t_open, t_high, t_low, t_close, t_vol = opens[-2], highs[-2], lows[-2], closes[-2], vols[-2]
-        t_time = str(bars[-2][0]) # Extract string format for precise disk cross-referencing
+        t_time = str(bars[-2][0]) 
         
         is_htf_bullish = t_close > daily_ema_50
         is_htf_bearish = t_close < daily_ema_50
@@ -307,17 +300,19 @@ def check_market_signals(symbol):
                 state['bear_ob'] = None
 
         # ==============================================================================
-        # 6. HARD PRODUCTION SAFETY NET: DISK-LEVEL DEDUPLICATION
+        # 6. HARD PRODUCTION SAFETY NET: UNIFIED JSON DEDUPLICATION
         # ==============================================================================
         if buy_triggered or sell_triggered:
-            last_logged = get_last_logged_timestamp(symbol)
+            alerts_cache = load_alerts_cache()
+            cache_key = f"{symbol}_{t_time}"
             
-            # If this candle timestamp has already been processed by the engine, terminate immediately.
-            if last_logged == t_time:
+            # If this precise symbol+timestamp exists in the JSON, silently terminate
+            if alerts_cache.get(cache_key):
                 return
                 
-            # Otherwise, lock the disk cache for this timestamp immediately before firing APIs
-            set_last_logged_timestamp(symbol, t_time)
+            # Lock the JSON state IMMEDIATELY before executing webhooks
+            alerts_cache[cache_key] = True
+            save_alerts_cache(alerts_cache)
             
             coin_name = symbol.split('/')[0]
             current_atr = calc_atr(highs[:-1], lows[:-1], closes[:-1], 14)
