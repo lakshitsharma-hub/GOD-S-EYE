@@ -338,7 +338,7 @@ def check_market_signals(symbol):
                 
                 send_telegram_alert(f"🟢 *GOD'S EYE BUY TRIGGERED!*\nAsset: #{coin_name}\nPrice: {t_close}\nStop Loss: {sl:.4f}\nTake Profit: {tp:.4f}\n📌 _Active V9 State Array Locked_")
                 push_signal_to_notion_journal(coin_name, "LONG [BUY]", t_close, sl, tp, "Active")
-                post_to_x_platform(f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🟢 LONG (BUY) TRIGGERED: #{coin_name}\n Bars Entry: {t_close}\n🎯 Target: {tp:.4f}\n\nV9 Risk Protocols Engaged.")
+                post_to_x_platform(f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🟢 LONG (BUY) TRIGGERED: #{coin_name}\n📊 Entry: {t_close}\n🎯 Target: {tp:.4f}\n\nV9 Risk Protocols Engaged.\n\n💎 VIP Access ($10 Fee):\nRequest Entry: https://t.me/+hQ7zz0wWfJ02YzFl")
                 
             elif sell_triggered:
                 sl = t_close + (current_atr * 2.0)
@@ -351,7 +351,7 @@ def check_market_signals(symbol):
                 
                 send_telegram_alert(f"🔴 *GOD'S EYE SELL TRIGGERED!*\nAsset: #{coin_name}\nPrice: {t_close}\nStop Loss: {sl:.4f}\nTake Profit: {tp:.4f}\n📌 _Active V9 State Array Locked_")
                 push_signal_to_notion_journal(coin_name, "SHORT [SELL]", t_close, sl, tp, "Active")
-                post_to_x_platform(f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🔴 SHORT (SELL) TRIGGERED: #{coin_name}\n📊 Entry: {t_close}\n🎯 Target: {tp:.4f}\n\nV9 Risk Protocols Engaged.")
+                post_to_x_platform(f"👁️ GOD'S EYE ALGO SETUP ALERT\n\n🔴 SHORT (SELL) TRIGGERED: #{coin_name}\n📊 Entry: {t_close}\n🎯 Target: {tp:.4f}\n\nV9 Risk Protocols Engaged.\n\n💎 VIP Access ($10 Fee):\nRequest Entry: https://t.me/+hQ7zz0wWfJ02YzFl")
                 
     except Exception as e:
         print(f"Error scanning {symbol}: {e}")
