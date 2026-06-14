@@ -18,7 +18,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "⚡ GOD'S EYE V11.0 [Holy Grail 3% Compounding Engine] ONLINE 24/7."
+    return "⚡ GOD'S EYE V12.0 [The Final Shot - 7% SL & Tight Long] ONLINE 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -41,9 +41,9 @@ exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'fu
 
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'LINK/USDT', 'BNB/USDT', 'DOGE/USDT', 'AVAX/USDT']
 
-# 🔥 V11 STRATEGY & SHIELD PARAMS
+# 🔥 V12 FINAL SHOT STRATEGY & SHIELD PARAMS
 TIMEFRAME = '1h'
-HARD_SL_PCT = 0.065
+HARD_SL_PCT = 0.07  # 🏆 V12 Locked 7% SL
 BREAK_EVEN_TRIGGER_PCT = 0.025  
 TRAILING_START_PCT = 0.040      
 TRAILING_STEP_PCT = 0.010       
@@ -54,7 +54,7 @@ TRUE_RISK_PCT = 0.03  # Exact 3% capital risk per trade
 WALLET_FILE = "virtual_wallet.txt"
 LEDGER_FILE = "signals_logged.txt"
 
-# V11 Telemetry State Framework
+# V12 Telemetry State Framework
 market_states = {
     symbol: {
         'active_trade': False,
@@ -84,7 +84,7 @@ def set_virtual_balance(amount):
 def calculate_true_risk_volume():
     balance = get_virtual_balance()
     risk_usd = balance * TRUE_RISK_PCT
-    # Volume needed so that a 6.5% drop equals exactly risk_usd
+    # Volume needed so that a 7% drop equals exactly risk_usd
     volume_usd = risk_usd / HARD_SL_PCT 
     return round(risk_usd, 2), round(volume_usd, 2)
 
@@ -229,8 +229,8 @@ def scan_markets():
             wallet_balance = get_virtual_balance()
             risk_usd, volume_usd = calculate_true_risk_volume()
 
-            # LONG TRIGGER
-            if curr['close'] > curr['ema_150'] and curr['adx'] > 25 and curr['volume'] > 0:
+            # 🟢 LONG TRIGGER (V12 ULTRA-TIGHT LOGIC)
+            if curr['close'] > curr['ema_150'] and curr['adx'] > 30 and curr['volume'] > prev['volume'] and curr['volume'] > 0:
                 if prev['close'] > prev['bull_fvg_top'] and curr['close'] < curr['bull_fvg_top']:
                     if curr['close'] >= curr['bull_fvg_bottom']:
                         append_to_ledger(signal_id)
@@ -243,7 +243,7 @@ def scan_markets():
                         state['risk_usd'] = risk_usd
                         state['volume_usd'] = volume_usd
                         
-                        msg = f"🟢 *LONG TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (-6.5%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
+                        msg = f"🟢 *LONG TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (-7%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
                         send_telegram_alert(msg)
                         
                         # X (Twitter) Alert with Custom Funnel Link
@@ -251,7 +251,7 @@ def scan_markets():
                         
                         push_signal_to_notion(symbol, "LONG", curr['close'], sl_price, risk_usd)
 
-            # SHORT TRIGGER
+            # 🔴 SHORT TRIGGER (UNCHANGED MASTER LOGIC)
             elif curr['close'] < curr['ema_150'] and curr['adx'] > 25 and curr['volume'] > 0:
                 if prev['close'] < prev['bear_fvg_bottom'] and curr['close'] > curr['bear_fvg_bottom']:
                     if curr['close'] <= curr['bear_fvg_top']:
@@ -265,7 +265,7 @@ def scan_markets():
                         state['risk_usd'] = risk_usd
                         state['volume_usd'] = volume_usd
                         
-                        msg = f"🔴 *SHORT TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (+6.5%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
+                        msg = f"🔴 *SHORT TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (+7%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
                         send_telegram_alert(msg)
                         
                         # X (Twitter) Alert with Custom Funnel Link
@@ -279,7 +279,7 @@ def scan_markets():
             print(f"Error scanning {symbol}: {e}")
 
 def run_bot():
-    send_telegram_alert("⚡ *GOD'S EYE V11.0 [Holy Grail 3% Compounding Engine] ONLINE*\n\nStatus: Active\nStrategy: True 3% Risk + 1-Min Shield Tracking\nWallet Initiated: $1000.00")
+    send_telegram_alert("⚡ *GOD'S EYE V12.0 [The Final Shot Engine] ONLINE*\n\nStatus: Active\nStrategy: True 3% Risk + 1-Min Shield Tracking\nWallet Initiated: $1000.00")
     while True:
         scan_markets()
         time.sleep(60) # 1-Minute exact precision tracking
