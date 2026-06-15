@@ -148,7 +148,7 @@ def push_signal_to_notion(asset, signal_type, entry_price, sl, risk_amount):
 # 🧠 CORE SCANNER & TRADE MANAGER (1-MINUTE LOOP)
 # ==============================================================================
 def scan_markets():
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ Scanning & Managing Trades...")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ Scanning & Managing Trades...", flush=True)
     
     for symbol in SYMBOLS:
         try:
@@ -276,8 +276,7 @@ def scan_markets():
             time.sleep(1) # Binance rate limit protection
             
         except Exception as e:
-            print(f"Error scanning {symbol}: {e}")
-
+            print(f"Error scanning {symbol}: {e}", flush=True)
 def run_bot():
     send_telegram_alert("⚡ *GOD'S EYE V12.0 [The Final Shot Engine] ONLINE*\n\nStatus: Active\nStrategy: True 3% Risk + 1-Min Shield Tracking\nWallet Initiated: $1000.00")
     while True:
