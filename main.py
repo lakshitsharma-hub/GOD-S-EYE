@@ -37,7 +37,7 @@ X_API_SECRET = os.environ.get("X_API_SECRET")
 X_ACCESS_TOKEN = os.environ.get("X_ACCESS_TOKEN")
 X_ACCESS_SECRET = os.environ.get("X_ACCESS_SECRET")
 
-exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+exchange = ccxt.bybit({'enableRateLimit': True, 'options': {'defaultType': 'linear'}})
 
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'LINK/USDT', 'BNB/USDT', 'DOGE/USDT', 'AVAX/USDT']
 
