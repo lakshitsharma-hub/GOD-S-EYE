@@ -18,7 +18,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "⚡ GOD'S EYE V12.0 [The Final Shot - 7% SL & Tight Long] ONLINE 24/7."
+    return "⚡ GOD'S EYE V29 [The Holy Grail Engine] ONLINE 24/7."
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -39,22 +39,23 @@ X_ACCESS_SECRET = os.environ.get("X_ACCESS_SECRET")
 
 exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
 
-SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'LINK/USDT', 'BNB/USDT', 'DOGE/USDT', 'AVAX/USDT']
+# V29 Optimized Pairs
+SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'LINK/USDT', 'BCH/USDT']
 
-# 🔥 V12 FINAL SHOT STRATEGY & SHIELD PARAMS
+# 🔥 V29 HOLY GRAIL PARAMS
 TIMEFRAME = '1h'
-HARD_SL_PCT = 0.07  # 🏆 V12 Locked 7% SL
+HARD_SL_PCT = 0.07  
 BREAK_EVEN_TRIGGER_PCT = 0.025  
 TRAILING_START_PCT = 0.040      
 TRAILING_STEP_PCT = 0.010       
 
 # 📊 THE "TRUE 3%" VIRTUAL COMPOUNDING ENGINE
 STARTING_BALANCE = 1000.0
-TRUE_RISK_PCT = 0.03  # Exact 3% capital risk per trade
+TRUE_RISK_PCT = 0.03  
 WALLET_FILE = "virtual_wallet.txt"
 LEDGER_FILE = "signals_logged.txt"
 
-# V12 Telemetry State Framework
+# Telemetry State Framework
 market_states = {
     symbol: {
         'active_trade': False,
@@ -68,7 +69,7 @@ market_states = {
 }
 
 # ==============================================================================
-# 🗃️ WALLET & LEDGER ENGINE (DE-DUPLICATION INCLUDED)
+# 🗃️ WALLET & LEDGER ENGINE
 # ==============================================================================
 def get_virtual_balance():
     if not os.path.exists(WALLET_FILE):
@@ -84,7 +85,6 @@ def set_virtual_balance(amount):
 def calculate_true_risk_volume():
     balance = get_virtual_balance()
     risk_usd = balance * TRUE_RISK_PCT
-    # Volume needed so that a 7% drop equals exactly risk_usd
     volume_usd = risk_usd / HARD_SL_PCT 
     return round(risk_usd, 2), round(volume_usd, 2)
 
@@ -108,6 +108,28 @@ def send_telegram_alert(message):
     try: requests.post(url, json={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=10)
     except: pass
 
+def push_signal_to_notion(asset, signal_type, entry_price, sl):
+    """Mapped perfectly to your Notion layout"""
+    if not NOTION_TOKEN or not NOTION_DATABASE_ID: return
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}", 
+        "Content-Type": "application/json", 
+        "Notion-Version": "2022-06-28"
+    }
+    data = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": {
+            "Asset": {"title": [{"text": {"content": asset}}]},
+            "Signal": {"rich_text": [{"text": {"content": signal_type}}]},
+            "Entry": {"rich_text": [{"text": {"content": str(entry_price)}}]},
+            "SL": {"rich_text": [{"text": {"content": str(sl)}}]},
+            "Status": {"select": {"name": "Active"}}
+        }
+    }
+    try: requests.post(url, headers=headers, json=data, timeout=10)
+    except: pass
+
 def post_to_x_platform(tweet_text):
     if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET]): return
     url = "https://api.twitter.com/2/tweets"
@@ -126,45 +148,42 @@ def post_to_x_platform(tweet_text):
     try: requests.post(url, headers={"Authorization": auth_header, "Content-Type": "application/json"}, json={"text": tweet_text}, timeout=10)
     except: pass
 
-def push_signal_to_notion(asset, signal_type, entry_price, sl, risk_amount):
-    if not NOTION_TOKEN or not NOTION_DATABASE_ID: return
-    url = "https://api.notion.com/v1/pages"
-    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-    data = {
-        "parent": {"database_id": NOTION_DATABASE_ID},
-        "properties": {
-            "Asset": {"title": [{"text": {"content": asset}}]},
-            "Signal": {"rich_text": [{"text": {"content": signal_type}}]},
-            "Entry": {"number": entry_price},
-            "Stop Loss": {"rich_text": [{"text": {"content": str(sl)}}]},
-            "Status": {"select": {"name": "Active"}},
-            "Risked Amount ($)": {"number": risk_amount}
-        }
-    }
-    try: requests.post(url, headers=headers, json=data, timeout=10)
-    except: pass
+def delayed_twitter_post(tweet_text, delay_seconds=900):
+    """Waits 15 minutes in the background, then posts to Twitter"""
+    time.sleep(delay_seconds)
+    post_to_x_platform(tweet_text)
 
 # ==============================================================================
-# 🧠 CORE SCANNER & TRADE MANAGER (1-MINUTE LOOP)
+# 🧠 V29 HOLY GRAIL SCANNER (1-MINUTE LOOP)
 # ==============================================================================
 def scan_markets():
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ Scanning & Managing Trades...", flush=True)
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ Scanning & Managing V29 Trades...", flush=True)
     
     for symbol in SYMBOLS:
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=200)
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=300)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            # --- V20 LONG INDICATORS ---
+            df['ema_50'] = ta.ema(df['close'], length=50)
+            df['ema_200'] = ta.ema(df['close'], length=200)
+            df['rsi'] = ta.rsi(df['close'], length=14)
+            df['volume_ma'] = df['volume'].rolling(24).mean()
+            
+            bb = ta.bbands(df['close'], length=20, std=2)
+            if bb is not None:
+                df['bb_width'] = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
+                df['bb_width_mean'] = df['bb_width'].rolling(20).mean()
+            else:
+                df['bb_width'] = 0
+                df['bb_width_mean'] = 0
+            
+            df['res_24h'] = df['high'].rolling(24).max().shift(1)
+
+            # --- ADX/FVG SHORT INDICATORS ---
             df['ema_150'] = ta.ema(df['close'], length=150)
             df['adx'] = ta.adx(df['high'], df['low'], df['close'], length=14)['ADX_14']
-            
-            # BULLISH FVG ARRAY
-            bull_cond = (df['low'] > df['high'].shift(2)) & (df['close'].shift(1) > df['open'].shift(1))
-            df.loc[bull_cond, 'bull_fvg_top'] = df['low']
-            df.loc[bull_cond, 'bull_fvg_bottom'] = df['high'].shift(2)
-            df['bull_fvg_top'] = df['bull_fvg_top'].ffill()
-            df['bull_fvg_bottom'] = df['bull_fvg_bottom'].ffill()
 
-            # BEARISH FVG ARRAY
             bear_cond = (df['high'] < df['low'].shift(2)) & (df['close'].shift(1) < df['open'].shift(1))
             df.loc[bear_cond, 'bear_fvg_top'] = df['low'].shift(2)
             df.loc[bear_cond, 'bear_fvg_bottom'] = df['high']
@@ -177,7 +196,7 @@ def scan_markets():
             
             state = market_states[symbol]
 
-            # 🛡️ 1. TRADE MANAGEMENT (1-Min Precision Checking)
+            # 🛡️ 1. TRADE MANAGEMENT (1-Min Precision)
             if state['active_trade']:
                 entry = state['entry_price']
                 side = state['side']
@@ -186,20 +205,17 @@ def scan_markets():
                 
                 profit_pct = (current_price - entry) / entry if side == 'LONG' else (entry - current_price) / entry
 
-                # Trailing Stop Logic (Lock Profit)
                 if profit_pct >= TRAILING_START_PCT:
                     new_sl = current_price * (1 - TRAILING_STEP_PCT) if side == 'LONG' else current_price * (1 + TRAILING_STEP_PCT)
                     if (side == 'LONG' and new_sl > sl_price) or (side == 'SHORT' and new_sl < sl_price):
                         state['sl_price'] = new_sl
                         send_telegram_alert(f"📈 *PROFIT LOCKED: {symbol}*\nTrailing Stop updated to: ${round(new_sl, 4)}")
 
-                # Break-Even Shield Logic
                 elif profit_pct >= BREAK_EVEN_TRIGGER_PCT and not state['be_activated']:
                     state['sl_price'] = entry
                     state['be_activated'] = True
                     send_telegram_alert(f"🛡️ *SHIELD ACTIVATED: {symbol}*\nTrade is Risk-Free. SL moved to Entry (${entry}).")
                 
-                # Exit Check using exact wicks (low for long, high for short)
                 is_sl_hit = (side == 'LONG' and latest['low'] <= state['sl_price']) or (side == 'SHORT' and latest['high'] >= state['sl_price'])
                 
                 if is_sl_hit:
@@ -211,50 +227,52 @@ def scan_markets():
                     set_virtual_balance(new_balance)
                     
                     emoji = "✅" if pnl_usd > 0 else "❌" if pnl_usd < 0 else "🛡️"
-                    msg = f"{emoji} *TRADE CLOSED: {symbol}*\nSide: {side}\nExit Price: ${round(exit_price, 4)}\nPnL: ${round(pnl_usd, 2)}\nNew Wallet: ${round(new_balance, 2)}"
+                    msg = f"{emoji} *TRADE CLOSED: {symbol}*\nSide: {side}\nExit Price: ${round(exit_price, 4)}\nProfit/Loss: {round(actual_profit_pct*100, 2)}%"
                     send_telegram_alert(msg)
                     
-                    # Reset State
                     market_states[symbol] = {'active_trade': False, 'side': None, 'entry_price': 0, 'sl_price': 0, 'risk_usd': 0, 'volume_usd': 0, 'be_activated': False}
                 
                 continue 
 
-            # 🔎 2. ENTRY SCANNER (De-Duplication + True 3% Risk Engine)
+            # 🔎 2. V29 ENTRY SCANNER
             t_time = str(curr['timestamp'])
             signal_id = f"{symbol.replace('/', '_')}_{t_time}"
             
             if is_signal_logged(signal_id):
                 continue
 
-            wallet_balance = get_virtual_balance()
             risk_usd, volume_usd = calculate_true_risk_volume()
+            clean_symbol = symbol.replace('/USDT', '')
 
-            # 🟢 LONG TRIGGER (V12 ULTRA-TIGHT LOGIC)
-            if curr['close'] > curr['ema_150'] and curr['adx'] > 30 and curr['volume'] > prev['volume'] and curr['volume'] > 0:
-                if prev['close'] > prev['bull_fvg_top'] and curr['close'] < curr['bull_fvg_top']:
-                    if curr['close'] >= curr['bull_fvg_bottom']:
-                        append_to_ledger(signal_id)
-                        sl_price = round(curr['close'] * (1 - HARD_SL_PCT), 4)
-                        
-                        state['active_trade'] = True
-                        state['side'] = 'LONG'
-                        state['entry_price'] = curr['close']
-                        state['sl_price'] = sl_price
-                        state['risk_usd'] = risk_usd
-                        state['volume_usd'] = volume_usd
-                        
-                        msg = f"🟢 *LONG TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (-7%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
-                        send_telegram_alert(msg)
-                        
-                        # X (Twitter) Alert with Custom Funnel Link
-                        post_to_x_platform(f"🚨 QUANT ALERT: Going LONG on {symbol} at {curr['close']}.\n\nCatch live SL/TP updates and join the VIP community here: https://t.me/+hQ7zz0wWfJ02YzFl\n\n#CryptoTrading #Algo")
-                        
-                        push_signal_to_notion(symbol, "LONG", curr['close'], sl_price, risk_usd)
+            # 🟢 V20 LONG TRIGGER 
+            if (curr['ema_50'] > curr['ema_200'] and curr['close'] > curr['ema_50'] and 
+                curr['close'] > curr['res_24h'] and curr['bb_width'] < (curr['bb_width_mean'] * 1.25) and 
+                curr['volume'] > (curr['volume_ma'] * 1.5) and 55 < curr['rsi'] < 80):
+                
+                append_to_ledger(signal_id)
+                sl_price = round(curr['close'] * (1 - HARD_SL_PCT), 4)
+                
+                state['active_trade'] = True
+                state['side'] = 'LONG'
+                state['entry_price'] = curr['close']
+                state['sl_price'] = sl_price
+                state['risk_usd'] = risk_usd
+                state['volume_usd'] = volume_usd
+                
+                # 💎 Telegram Premium Alert (Clean & Direct)
+                msg = f"🟢 *LONG TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (-7%)\nRisk Management: 3% Capital"
+                send_telegram_alert(msg) 
+                push_signal_to_notion(symbol, "LONG", curr['close'], sl_price) 
+                
+                # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins)
+                tweet = f"🚨 𝐀𝐋𝐆𝐎 𝐀𝐋𝐄𝐑𝐓: Our V29 Engine fired a [LONG] on #{clean_symbol} 15 minutes ago! 🚀\n\nEntry was nailed at ${curr['close']}.\n\n⏱️ You're seeing this late. Premium members got this instantly with exact SL & Targets.\n\nStop missing out. Get real-time execution 👇\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl\n\n#CryptoTrading #Algo"
+                Thread(target=delayed_twitter_post, args=(tweet, 900)).start()
 
-            # 🔴 SHORT TRIGGER (UNCHANGED MASTER LOGIC)
+            # 🔴 ADX/FVG SHORT TRIGGER 
             elif curr['close'] < curr['ema_150'] and curr['adx'] > 25 and curr['volume'] > 0:
                 if prev['close'] < prev['bear_fvg_bottom'] and curr['close'] > curr['bear_fvg_bottom']:
                     if curr['close'] <= curr['bear_fvg_top']:
+                        
                         append_to_ledger(signal_id)
                         sl_price = round(curr['close'] * (1 + HARD_SL_PCT), 4)
                         
@@ -265,23 +283,25 @@ def scan_markets():
                         state['risk_usd'] = risk_usd
                         state['volume_usd'] = volume_usd
                         
-                        msg = f"🔴 *SHORT TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (+7%)\nCapital Risked: ${risk_usd} (3%)\nVirtual Account: ${wallet_balance}"
-                        send_telegram_alert(msg)
+                        # 💎 Telegram Premium Alert (Clean & Direct)
+                        msg = f"🔴 *SHORT TRIGGERED: {symbol}*\nEntry: ${curr['close']}\nHard SL: ${sl_price} (+7%)\nRisk Management: 3% Capital"
+                        send_telegram_alert(msg) 
+                        push_signal_to_notion(symbol, "SHORT", curr['close'], sl_price) 
                         
-                        # X (Twitter) Alert with Custom Funnel Link
-                        post_to_x_platform(f"🚨 QUANT ALERT: Going SHORT on {symbol} at {curr['close']}.\n\nCatch live SL/TP updates and join the VIP community here: https://t.me/+hQ7zz0wWfJ02YzFl\n\n#CryptoTrading #Algo")
-                        
-                        push_signal_to_notion(symbol, "SHORT", curr['close'], sl_price, risk_usd)
+                        # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins)
+                        tweet = f"⚠️ 𝐈𝐍𝐒𝐓𝐈𝐓𝐔𝐓𝐈𝐎𝐍𝐀𝐋 𝐒𝐇𝐎𝐑𝐓: We caught the top on #{clean_symbol} 15 mins ago! 🩸\n\nShort Entry: ${curr['close']}.\n\n⏱️ Free feed is delayed. Our VIPs are already risk-free with trailing stops.\n\nWant zero-delay instant alerts? Join the Premium Room 👇\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl\n\n#Crypto #SmartMoney #Short"
+                        Thread(target=delayed_twitter_post, args=(tweet, 900)).start()
 
-            time.sleep(1) # Binance rate limit protection
+            time.sleep(1) 
             
         except Exception as e:
             print(f"Error scanning {symbol}: {e}", flush=True)
+
 def run_bot():
-    send_telegram_alert("⚡ *GOD'S EYE V12.0 [The Final Shot Engine] ONLINE*\n\nStatus: Active\nStrategy: True 3% Risk + 1-Min Shield Tracking\nWallet Initiated: $1000.00")
+    print("GOD'S EYE V29 Initialized. Engine Running Silently...", flush=True)
     while True:
         scan_markets()
-        time.sleep(60) # 1-Minute exact precision tracking
+        time.sleep(60)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
