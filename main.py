@@ -164,15 +164,20 @@ def scan_markets():
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=300)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
-            # --- V20 LONG INDICATORS ---
+           # --- V20 LONG INDICATORS ---
             df['ema_50'] = ta.ema(df['close'], length=50)
             df['ema_200'] = ta.ema(df['close'], length=200)
             df['rsi'] = ta.rsi(df['close'], length=14)
             df['volume_ma'] = df['volume'].rolling(24).mean()
             
             bb = ta.bbands(df['close'], length=20, std=2)
-            if bb is not None:
-                df['bb_width'] = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
+            if bb is not None and not bb.empty:
+                # Dynamic column picking (Version Mismatch Proof)
+                bbu_col = [c for c in bb.columns if 'BBU' in c][0]
+                bbl_col = [c for c in bb.columns if 'BBL' in c][0]
+                bbm_col = [c for c in bb.columns if 'BBM' in c][0]
+                
+                df['bb_width'] = (bb[bbu_col] - bb[bbl_col]) / bb[bbm_col]
                 df['bb_width_mean'] = df['bb_width'].rolling(20).mean()
             else:
                 df['bb_width'] = 0
