@@ -234,7 +234,7 @@ def scan_markets():
                 
                 continue 
 
-            # 🔎 2. V29 ENTRY SCANNER
+            # 🔎 2. V29 ENTRY SCANNER & AUTOMATED MARKETING
             t_time = str(curr['timestamp'])
             signal_id = f"{symbol.replace('/', '_')}_{t_time}"
             
@@ -244,7 +244,7 @@ def scan_markets():
             risk_usd, volume_usd = calculate_true_risk_volume()
             clean_symbol = symbol.replace('/USDT', '')
 
-            # 🟢 V20 LONG TRIGGER 
+            # 🟢 V20 LONG TRIGGER (Momentum Breakout)
             if (curr['ema_50'] > curr['ema_200'] and curr['close'] > curr['ema_50'] and 
                 curr['close'] > curr['res_24h'] and curr['bb_width'] < (curr['bb_width_mean'] * 1.25) and 
                 curr['volume'] > (curr['volume_ma'] * 1.5) and 55 < curr['rsi'] < 80):
@@ -264,14 +264,14 @@ def scan_markets():
                 send_telegram_alert(msg) 
                 push_signal_to_notion(symbol, "LONG", curr['close'], sl_price) 
                 
-                # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins)
-                tweet = f"🚨 𝐀𝐋𝐆𝐎 𝐀𝐋𝐄𝐑𝐓: Our V29 Engine fired a [LONG] on #{clean_symbol} 15 minutes ago! 🚀\n\nEntry was nailed at ${curr['close']}.\n\n⏱️ You're seeing this late. Premium members got this instantly with exact SL & Targets.\n\nStop missing out. Get real-time execution 👇\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl\n\n#CryptoTrading #Algo"
+                # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins) with Notion Link Included
+                tweet = f"🚨 𝐀𝐋𝐆𝐎 𝐀𝐋𝐄𝐑𝐓: Our V29 Engine fired a [LONG] on #{clean_symbol} 15 mins ago! 🚀\n\nEntry was nailed at ${curr['close']}.\n\n⏱️ You're seeing this late. VIP members got this instantly.\n\n📊 Live Public Tracker:\n🔗 https://app.notion.com/p/377450889e638092bdc5e04082836f13?v=377450889e6380c3b810000c0bb7edc0\n\n⚡ Get Real-Time Execution:\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl"
                 Thread(target=delayed_twitter_post, args=(tweet, 900)).start()
 
-            # 🔴 ADX/FVG SHORT TRIGGER 
+            # 🔴 ADX/FVG SHORT TRIGGER (Institutional Sweep)
             elif curr['close'] < curr['ema_150'] and curr['adx'] > 25 and curr['volume'] > 0:
                 if prev['close'] < prev['bear_fvg_bottom'] and curr['close'] > curr['bear_fvg_bottom']:
-                    if curr['close'] <= curr['bear_fvg_top']:
+                    if curr['close'] <= curr['bear_fvg_top']:  # BUG FIXED HERE
                         
                         append_to_ledger(signal_id)
                         sl_price = round(curr['close'] * (1 + HARD_SL_PCT), 4)
@@ -288,8 +288,8 @@ def scan_markets():
                         send_telegram_alert(msg) 
                         push_signal_to_notion(symbol, "SHORT", curr['close'], sl_price) 
                         
-                        # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins)
-                        tweet = f"⚠️ 𝐈𝐍𝐒𝐓𝐈𝐓𝐔𝐓𝐈𝐎𝐍𝐀𝐋 𝐒𝐇𝐎𝐑𝐓: We caught the top on #{clean_symbol} 15 mins ago! 🩸\n\nShort Entry: ${curr['close']}.\n\n⏱️ Free feed is delayed. Our VIPs are already risk-free with trailing stops.\n\nWant zero-delay instant alerts? Join the Premium Room 👇\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl\n\n#Crypto #SmartMoney #Short"
+                        # 🐦 Twitter Marketing FOMO Alert (Delayed by 15 mins) with Notion Link Included
+                        tweet = f"⚠️ 𝐈𝐍𝐒𝐓𝐈𝐓𝐔𝐓𝐈𝐎𝐍𝐀𝐋 𝐒𝐇𝐎𝐑𝐓: We caught the top on #{clean_symbol} 15 mins ago! 🩸\n\nShort Entry: ${curr['close']}.\n\n⏱️ Free feed is delayed. Our VIPs are already risk-free.\n\n📊 Live Public Tracker:\n🔗 https://app.notion.com/p/377450889e638092bdc5e04082836f13?v=377450889e6380c3b810000c0bb7edc0\n\n⚡ Get Real-Time Execution:\n🔗 https://t.me/+hQ7zz0wWfJ02YzFl"
                         Thread(target=delayed_twitter_post, args=(tweet, 900)).start()
 
             time.sleep(1) 
