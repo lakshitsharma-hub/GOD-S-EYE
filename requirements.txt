@@ -3,3 +3,5 @@ ccxt==4.2.42
 requests==2.31.0
 pandas
 pandas_ta
+python-dotenv
+tweepy
