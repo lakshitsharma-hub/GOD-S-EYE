@@ -217,7 +217,7 @@ def scan_markets():
     
     for symbol in SYMBOLS:
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=300)
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=500)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
             df['ema_50'] = ta.ema(df['close'], length=50)
@@ -394,7 +394,7 @@ def run_bot():
     print("\n🦅 GOD'S EYE MASTER ENGINE RUNNING SILENTLY...", flush=True)
     while True:
         scan_markets()
-        time.sleep(60)
+        time.sleep(15)
 
 if __name__ == "__main__":
     # Start Flask to keep Render Web Service alive
