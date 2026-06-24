@@ -1,5 +1,5 @@
 # ==============================================================================
-# 🦅 GOD'S EYE - THE ULTIMATE TRADING ENGINE (FULL MATRIX)
+# 🦅 GOD'S EYE - STANDALONE QUANT ENGINE (ZERO SLIPPAGE EDITION)
 # ==============================================================================
 
 import os
@@ -10,12 +10,18 @@ import tweepy
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import queue
+import threading
+import warnings
 from datetime import datetime
 from flask import Flask
-from threading import Thread
 from dotenv import load_dotenv
+from urllib3.exceptions import InsecureRequestWarning
 
-# Initialize Flask Server (To keep the bot alive on Render 24/7)
+# SSL Warnings Hide Karein
+warnings.simplefilter('ignore', InsecureRequestWarning)
+
+# Flask Server (Render 24/7 Keep-Alive)
 app = Flask('')
 
 @app.route('/')
@@ -27,9 +33,12 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 # ==============================================================================
-# 🔐 SECURE CREDENTIALS ARCHITECTURE (Loads from .env)
+# 🔐 SECURE CREDENTIALS & PROXY (Loads from Render Environment Variables)
 # ==============================================================================
 load_dotenv()
+
+# Cloudflare Proxy for Bypassing Cloud Server Restrictions
+CLOUDFLARE_PROXY_BASE = "https://godseye.lakshitsharma8080.workers.dev"
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
@@ -40,52 +49,137 @@ X_API_SECRET = os.getenv("X_API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
 X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET")
 
-NOTION_PUBLIC_URL = "https://app.notion.com/p/377450889e638092bdc5e04082836f13?v=377450889e6380c3b810000c0bb7edc0"
 TELEGRAM_JOIN_URL = "https://t.me/+hQ7zz0wWfJ02YzFl"
 
 exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
 
-# Combined & Optimized Institutional Pairs
 SYMBOLS = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 
-    'DOGE/USDT', 'LINK/USDT', 'DOT/USDT', 'AVAX/USDT', 'ATOM/USDT', 
-    'UNI/USDT', 'LTC/USDT', 'BCH/USDT'
+    'LINK/USDT', 'DOT/USDT', 'AVAX/USDT', 'ATOM/USDT'
 ]
 
 # ==============================================================================
 # 🔥 HOLY GRAIL PARAMETERS (Strict Risk Management)
 # ==============================================================================
 TIMEFRAME = '1h'
-HARD_SL_PCT = 0.15           # 15% Strict Chart SL
+HARD_SL_PCT = 0.13           # 13% Strict Chart SL
 TRUE_RISK_PCT = 0.06         # 6% Max Portfolio Risk
-TRAILING_START_PCT = 0.025   # Trailing activates at +2.5%
+TRAILING_START_PCT = 0.04    # Trailing activates at +4%
 TRAILING_GAP_PCT = 0.001     # Native 0.1% breathing space below peak
-TIME_BAILOUT_HOURS = 8.0     # Maximum stagnant time
-TIME_BAILOUT_LOSS = -0.015   # Max loss allowed at 8 hours
+TIME_BAILOUT_HOURS = 8.0     
 
 STARTING_BALANCE = 1000.0
 WALLET_FILE = "virtual_wallet.txt"
 LEDGER_FILE = "signals_logged.txt"
 
-# Telemetry State Framework
 market_states = {
     symbol: {
-        'active_trade': False,
-        'side': None,
-        'entry_price': 0.0,
-        'sl_price': 0.0,
-        'target': 0.0,
-        'peak_price': 0.0,
-        'risk_usd': 0.0,
-        'volume_usd': 0.0,
-        'trailing_active': False,
-        'entry_time': None,
-        'notion_page_id': None
+        'active_trade': False, 'side': None, 'entry_price': 0.0, 'sl_price': 0.0,
+        'target': 0.0, 'peak_price': 0.0, 'risk_usd': 0.0, 'volume_usd': 0.0,
+        'trailing_active': False, 'entry_time': None, 'notion_page_id': None
     } for symbol in SYMBOLS
 }
 
 # ==============================================================================
-# 🗃️ VIRTUAL WALLET & LEDGER ENGINE
+# 🚀 THE BULLETPROOF MESSAGE QUEUE ENGINE (ZERO SLIPPAGE)
+# ==============================================================================
+telemetry_queue = queue.Queue()
+
+def telemetry_worker():
+    """Background Worker: Executes API calls without freezing the trading loop"""
+    print("📡 Background Telemetry Worker Online.", flush=True)
+    while True:
+        try:
+            task = telemetry_queue.get()
+            task_type = task[0]
+
+            if task_type == 'telegram':
+                _, message = task
+                if TELEGRAM_TOKEN and CHAT_ID:
+                    url = f"{CLOUDFLARE_PROXY_BASE}/bot{TELEGRAM_TOKEN}/sendMessage"
+                    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
+                    for attempt in range(5):
+                        try:
+                            requests.post(url, json=payload, timeout=20.0, verify=False).raise_for_status()
+                            print(f"✅ Telegram Alert Sent!", flush=True)
+                            break
+                        except Exception as e:
+                            time.sleep(5)
+
+            elif task_type == 'notion_open':
+                _, trade_id, asset, side, entry_price, sl_price, target_price = task
+                if NOTION_TOKEN and NOTION_DATABASE_ID:
+                    url = "https://api.notion.com/v1/pages"
+                    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
+                    data = {
+                        "parent": {"database_id": NOTION_DATABASE_ID},
+                        "properties": {
+                            "Asset": {"title": [{"text": {"content": f"{asset} #{trade_id}"}}]},
+                            "Signal": {"select": {"name": side}},
+                            "Entry": {"number": float(entry_price)},
+                            "SL": {"number": float(sl_price)},
+                            "Target": {"number": float(target_price)},
+                            "Status": {"select": {"name": "OPEN"}},
+                            "Trailing Active": {"checkbox": False},
+                            "Dynamic Floor SL": {"number": 0.0}
+                        }
+                    }
+                    try:
+                        res = requests.post(url, headers=headers, json=data, timeout=15.0, verify=False)
+                        if res.status_code == 200:
+                            page_id = res.json().get("id")
+                            market_states[asset]['notion_page_id'] = page_id
+                    except: pass
+
+            elif task_type == 'notion_patch':
+                _, page_id, data = task
+                if NOTION_TOKEN and page_id:
+                    url = f"https://api.notion.com/v1/pages/{page_id}"
+                    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
+                    for attempt in range(3):
+                        try:
+                            requests.patch(url, headers=headers, json=data, timeout=15.0, verify=False).raise_for_status()
+                            break
+                        except: time.sleep(3)
+
+            elif task_type == 'twitter':
+                _, tweet_text = task
+                if all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET]):
+                    try:
+                        client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
+                        client.create_tweet(text=tweet_text, user_auth=True)
+                    except Exception as e:
+                        print(f"Twitter Post Silently Failed: {e}", flush=True)
+
+            telemetry_queue.task_done()
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"Telemetry Worker Crashed/Recovered: {e}", flush=True)
+            time.sleep(2)
+
+# Helpers to put tasks in Queue instantly (Zero Delay for Trading Engine)
+def send_telegram_alert(message):
+    telemetry_queue.put(('telegram', message))
+
+def notion_open_trade_async(trade_id, asset, side, entry_price, sl_price, target_price):
+    telemetry_queue.put(('notion_open', trade_id, asset, side, entry_price, sl_price, target_price))
+
+def notion_update_trailing(page_id, dynamic_sl):
+    if page_id:
+        data = {"properties": {"Trailing Active": {"checkbox": True}, "Dynamic Floor SL": {"number": float(dynamic_sl)}}}
+        telemetry_queue.put(('notion_patch', page_id, data))
+
+def notion_close_trade(page_id, result_tag):
+    if page_id:
+        data = {"properties": {"Status": {"select": {"name": "CLOSED"}}, "Result": {"select": {"name": result_tag}}}}
+        telemetry_queue.put(('notion_patch', page_id, data))
+
+def delayed_twitter_post(tweet_text, delay_seconds=600):
+    threading.Timer(delay_seconds, lambda: telemetry_queue.put(('twitter', tweet_text))).start()
+
+# ==============================================================================
+# 🗃️ VIRTUAL WALLET ENGINE
 # ==============================================================================
 def get_virtual_balance():
     if not os.path.exists(WALLET_FILE):
@@ -116,78 +210,7 @@ def append_to_ledger(signal_id):
     except: pass
 
 # ==============================================================================
-# 📢 DISTRIBUTION CORES (TELEGRAM, NOTION, TWITTER)
-# ==============================================================================
-def send_telegram_alert(message):
-    if not TELEGRAM_TOKEN or not CHAT_ID: return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    try: requests.post(url, json={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=12)
-    except Exception as e: print(f"Telegram Error: {e}", flush=True)
-
-def notion_open_trade(trade_id, asset, side, entry_price, sl_price, target_price):
-    if not NOTION_TOKEN or not NOTION_DATABASE_ID: return None
-    url = "https://api.notion.com/v1/pages"
-    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-    data = {
-        "parent": {"database_id": NOTION_DATABASE_ID},
-        "properties": {
-            "Asset": {"title": [{"text": {"content": f"{asset} #{trade_id}"}}]},
-            "Signal": {"select": {"name": side}},
-            "Entry": {"number": float(entry_price)},
-            "SL": {"number": float(sl_price)},
-            "Target": {"number": float(target_price)},
-            "Status": {"select": {"name": "OPEN"}},
-            "Trailing Active": {"checkbox": False},
-            "Dynamic Floor SL": {"number": 0.0}
-        }
-    }
-    try: 
-        response = requests.post(url, headers=headers, json=data, timeout=10)
-        if response.status_code == 200: return response.json().get("id")
-    except: pass
-    return None
-
-def notion_update_trailing(page_id, dynamic_sl):
-    if not NOTION_TOKEN or not page_id: return
-    url = f"https://api.notion.com/v1/pages/{page_id}"
-    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-    data = {
-        "properties": {
-            "Trailing Active": {"checkbox": True},
-            "Dynamic Floor SL": {"number": float(dynamic_sl)}
-        }
-    }
-    try: requests.patch(url, headers=headers, json=data, timeout=10)
-    except: pass
-
-def notion_close_trade(page_id, result_tag):
-    if not NOTION_TOKEN or not page_id: return
-    url = f"https://api.notion.com/v1/pages/{page_id}"
-    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-    data = {
-        "properties": {
-            "Status": {"select": {"name": "CLOSED"}},
-            "Result": {"select": {"name": result_tag}}
-        }
-    }
-    try: requests.patch(url, headers=headers, json=data, timeout=10)
-    except: pass
-
-def post_to_twitter(tweet_text):
-    if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET]): return
-    try:
-        client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
-        client.create_tweet(text=tweet_text, user_auth=True)
-    except Exception as e:
-        print(f"Twitter Post Silently Failed (Awaiting Paid Tier): {e}")
-
-def delayed_twitter_post(tweet_text, delay_seconds=600):
-    """Executes exactly after 10 minutes (600s) to create FOMO."""
-    time.sleep(delay_seconds)
-    post_to_twitter(tweet_text)
-
-# ==============================================================================
-# 🧠 GOD'S EYE MASTER SCANNER (1-MINUTE EXECUTION LOOP)
+# 🧠 GOD'S EYE MASTER SCANNER (SMC / FVG LOGIC)
 # ==============================================================================
 def scan_markets():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🦅 Scanning Core Matrices...", flush=True)
@@ -197,7 +220,6 @@ def scan_markets():
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=300)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
-            # --- INDICATOR CALCULATIONS ---
             df['ema_50'] = ta.ema(df['close'], length=50)
             df['ema_150'] = ta.ema(df['close'], length=150)
             df['ema_200'] = ta.ema(df['close'], length=200)
@@ -241,24 +263,10 @@ def scan_markets():
                 profit_pct = (current_price - entry) / entry if side == 'LONG' else (entry - current_price) / entry
                 time_open_hours = (datetime.now() - state['entry_time']).total_seconds() / 3600
 
-                # A. Time Bailout Logic (8 Hours Stagnation)
-                if time_open_hours >= TIME_BAILOUT_HOURS and profit_pct <= TIME_BAILOUT_LOSS:
-                    notion_close_trade(state['notion_page_id'], "time_bailout_loss")
-                    
-                    msg = (f"⏳ **GOD'S EYE: STRATEGY EXIT (TIME BAILOUT)**\n\n"
-                           f"🪙 Asset: {symbol}\n🕒 Duration: 8 Hours (Stagnant Volume)\n"
-                           f"📉 Exit PnL: {round(profit_pct * 100, 2)}%\n"
-                           f"🔕 Status: Position closed via market order. The engine doesn't hope, it executes.")
-                    send_telegram_alert(msg)
-                    
-                    market_states[symbol] = {'active_trade': False}
-                    continue
-
-                # B. Trailing Engine Activation (At +2.5%)
                 if profit_pct >= TRAILING_START_PCT:
                     if not state['trailing_active']:
                         state['trailing_active'] = True
-                        msg = (f"🛡️ **GOD'S EYE: TRAILING PROTECTION ACTIVATED**\n\n"
+                        msg = (f"🛡️ <b>GOD'S EYE: TRAILING PROTECTION ACTIVATED</b>\n\n"
                                f"🪙 Asset: {symbol}\n📈 Current PnL: +{round(profit_pct*100, 2)}%\n"
                                f"🛡️ Status: Native Break-Even Shield Engaged. Dynamic floor locked.")
                         send_telegram_alert(msg)
@@ -273,7 +281,6 @@ def scan_markets():
                         state['sl_price'] = round(new_sl, 4)
                         notion_update_trailing(state['notion_page_id'], state['sl_price'])
 
-                # C. Stop Loss / Trailing Stop Hit Trigger
                 is_sl_hit = (side == 'LONG' and latest['low'] <= state['sl_price']) or (side == 'SHORT' and latest['high'] >= state['sl_price'])
                 
                 if is_sl_hit:
@@ -287,32 +294,26 @@ def scan_markets():
                     notion_close_trade(state['notion_page_id'], result_tag)
 
                     if state['trailing_active']:
-                        msg = (f"🎉 **GOD'S EYE: TRAILING PROFIT SECURED** 🎉\n\n"
+                        msg = (f"🎉 <b>GOD'S EYE: TRAILING PROFIT SECURED</b> 🎉\n\n"
                                f"🪙 Asset: {symbol} | {side}\n🎯 Entry: ${round(entry, 4)}\n"
-                               f"💰 Exit: ${round(exit_price, 4)}\n📈 Net Strategy Profit: +{round(actual_profit_pct*100, 2)}%\n\n"
-                               f"Automated trailing engine maxed out the trend smoothly.")
+                               f"💰 Exit: ${round(exit_price, 4)}\n📈 Net Profit: +{round(actual_profit_pct*100, 2)}%\n")
                         send_telegram_alert(msg)
                         
-                        # Twitter FOMO Post for Win
-                        t_msg = (f"🎉 GOD'S EYE: TRAILING PROFIT SECURED! 🎉\n\n🪙 Asset: ${clean_symbol} | {side}\n"
+                        t_msg = (f"🎉 GOD'S EYE: TRAILING PROFIT SECURED! 🎉\n\n🪙 Asset: #{clean_symbol} | {side}\n"
                                  f"📈 Net Profit: +{round(actual_profit_pct*100, 2)}% NET ✅\n\n"
-                                 f"While retail panic-sold, our native 0.1% floor locked the peak flawlessly. 💸\n\n"
-                                 f"👥 Premium Access: {TELEGRAM_JOIN_URL}\n📊 Live Ledger: {NOTION_PUBLIC_URL}")
-                        post_to_twitter(t_msg)
+                                 f"Automated 0.1% floor locked the peak flawlessly. 💸\n\nVIP: {TELEGRAM_JOIN_URL}")
+                        delayed_twitter_post(t_msg, 600)
                         
                     else:
-                        msg = (f"💥 **GOD'S EYE: STOP LOSS EXECUTION** 💥\n\n"
+                        msg = (f"💥 <b>GOD'S EYE: STOP LOSS EXECUTION</b> 💥\n\n"
                                f"🪙 Asset: {symbol} | {side}\n🛑 Exit Price: ${round(exit_price, 4)}\n"
                                f"📉 Net Chart Loss: {round(actual_profit_pct*100, 2)}%\n"
-                               f"🛡️ Account Impact: Exact -6.0% capital risk hit. Portfolio is protected.")
+                               f"🛡️ Portfolio Impact: Protected.")
                         send_telegram_alert(msg)
                         
-                        # Twitter Trust Post for Loss
-                        t_msg = (f"💥 GOD'S EYE RISK SHIELD: POSITION TERMINATED 💥\n\n🪙 Asset: ${clean_symbol} | {side}\n"
-                                 f"📉 Chart Drop: {round(actual_profit_pct*100, 2)}%\n🛡️ Portfolio Impact: Exact -6.0% Capital Control.\n\n"
-                                 f"Retail blew their accounts here, but our elite math engine kept us safe. 🧠\n\n"
-                                 f"👇 Join The 1%: {TELEGRAM_JOIN_URL}")
-                        post_to_twitter(t_msg)
+                        t_msg = (f"💥 GOD'S EYE RISK SHIELD: POSITION TERMINATED 💥\n\n🪙 Asset: #{clean_symbol} | {side}\n"
+                                 f"📉 Chart Drop: {round(actual_profit_pct*100, 2)}%\n🛡️ Exact Capital Control.\n\nVIP: {TELEGRAM_JOIN_URL}")
+                        delayed_twitter_post(t_msg, 600)
                     
                     market_states[symbol] = {k: False if type(v) == bool else None for k, v in state.items()}
                 
@@ -346,21 +347,16 @@ def scan_markets():
                     'entry_time': datetime.now()
                 })
                 
-                state['notion_page_id'] = notion_open_trade(trade_uid, symbol, "LONG", curr['close'], sl_price, target_price)
+                notion_open_trade_async(trade_uid, symbol, "LONG", curr['close'], sl_price, target_price)
                 
-                # Telegram
-                msg = (f"🚨 **GOD'S EYE ALGO: NEW POSITION EXECUTED**\n\n"
+                msg = (f"🚨 <b>GOD'S EYE ALGO: NEW POSITION EXECUTED</b>\n\n"
                        f"🪙 Asset: {symbol}\n🟢 Direction: LONG\n⚡ Leverage: 5.0x\n"
-                       f"🎯 Entry Price: ${curr['close']}\n🛑 Chart Stop-Loss: -15.0%\n"
-                       f"🛡️ Max Portfolio Risk: -6.0% of capital")
+                       f"🎯 Entry Price: ${curr['close']}\n🛑 Chart Stop-Loss: -15.0%\n")
                 send_telegram_alert(msg) 
                 
-                # Twitter Delayed Thread (10 Mins)
-                t_msg = (f"🚨 GOD'S EYE ALGO: NEW POSITION INJECTED 🚨\n\n🪙 Asset: ${clean_symbol}\n🟢 Type: LONG\n"
-                         f"🎯 Entry: ${curr['close']}\n🛡️ Risk: Strict 6.0% Wallet Protection\n\n"
-                         f"Premium members already banked the early entry 10 mins ago! Don't chase green candles late. 🤫\n\n"
-                         f"👇 VIP Alerts: {TELEGRAM_JOIN_URL}")
-                Thread(target=delayed_twitter_post, args=(t_msg, 600)).start()
+                t_msg = (f"🚨 GOD'S EYE ALGO: NEW POSITION INJECTED 🚨\n\n🪙 Asset: #{clean_symbol}\n🟢 Type: LONG\n"
+                         f"🎯 Entry: ${curr['close']}\n🛡️ Risk: Strict Protection\n\nVIP Alerts: {TELEGRAM_JOIN_URL}")
+                delayed_twitter_post(t_msg, 600)
 
             # 🔴 SHORT TRIGGER
             elif curr['close'] < curr['ema_150'] and curr['adx'] > 25 and curr['volume'] > 0:
@@ -378,21 +374,16 @@ def scan_markets():
                             'entry_time': datetime.now()
                         })
                         
-                        state['notion_page_id'] = notion_open_trade(trade_uid, symbol, "SHORT", curr['close'], sl_price, target_price)
+                        notion_open_trade_async(trade_uid, symbol, "SHORT", curr['close'], sl_price, target_price)
                         
-                        # Telegram
-                        msg = (f"🚨 **GOD'S EYE ALGO: NEW POSITION EXECUTED**\n\n"
+                        msg = (f"🚨 <b>GOD'S EYE ALGO: NEW POSITION EXECUTED</b>\n\n"
                                f"🪙 Asset: {symbol}\n🔴 Direction: SHORT\n⚡ Leverage: 5.0x\n"
-                               f"🎯 Entry Price: ${curr['close']}\n🛑 Chart Stop-Loss: -15.0%\n"
-                               f"🛡️ Max Portfolio Risk: -6.0% of capital")
+                               f"🎯 Entry Price: ${curr['close']}\n🛑 Chart Stop-Loss: -15.0%\n")
                         send_telegram_alert(msg)
                         
-                        # Twitter Delayed Thread (10 Mins)
-                        t_msg = (f"🚨 GOD'S EYE ALGO: NEW POSITION INJECTED 🚨\n\n🪙 Asset: ${clean_symbol}\n🔴 Type: SHORT\n"
-                                 f"🎯 Entry: ${curr['close']}\n🛡️ Risk: Strict 6.0% Wallet Protection\n\n"
-                                 f"Premium members already banked the early entry 10 mins ago! Don't chase trends late. 🤫\n\n"
-                                 f"👇 VIP Alerts: {TELEGRAM_JOIN_URL}")
-                        Thread(target=delayed_twitter_post, args=(t_msg, 600)).start()
+                        t_msg = (f"🚨 GOD'S EYE ALGO: NEW POSITION INJECTED 🚨\n\n🪙 Asset: #{clean_symbol}\n🔴 Type: SHORT\n"
+                                 f"🎯 Entry: ${curr['close']}\n🛡️ Risk: Strict Protection\n\nVIP Alerts: {TELEGRAM_JOIN_URL}")
+                        delayed_twitter_post(t_msg, 600)
 
             time.sleep(1) 
             
@@ -400,12 +391,19 @@ def scan_markets():
             print(f"Error scanning {symbol}: {e}", flush=True)
 
 def run_bot():
-    print("\n🦅 GOD'S EYE INITIALIZED. MASTER ENGINE RUNNING SILENTLY...", flush=True)
+    print("\n🦅 GOD'S EYE MASTER ENGINE RUNNING SILENTLY...", flush=True)
     while True:
         scan_markets()
         time.sleep(60)
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
+    # Start Flask to keep Render Web Service alive
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    # Start the robust Telemetry Message Queue Worker
+    threading.Thread(target=telemetry_worker, daemon=True).start()
+    
     time.sleep(3)
+    
+    # Start the actual scanning engine
     run_bot()
