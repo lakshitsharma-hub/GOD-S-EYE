@@ -35,7 +35,9 @@ RELAY_SECRET = os.environ.get("RELAY_SECRET", "")
 @app.route('/webhook/relay', methods=['POST'])
 def webhook_relay():
     """Receives trade alerts from the HuggingFace bot and forwards them to Telegram
-    using Render's outbound network (which isn't throttled, unlike HuggingFace's)."""
+    using Render's outbound network (which isn't throttled, unlike HuggingFace's).
+    Optionally accepts bot_token/chat_id so it can relay to a DIFFERENT bot/chat
+    (e.g. the personal bot) instead of Render's own default bot."""
     data = request.get_json(silent=True) or {}
 
     if RELAY_SECRET and data.get('secret') != RELAY_SECRET:
@@ -45,9 +47,18 @@ def webhook_relay():
     if not message:
         return jsonify({"error": "missing 'message' field"}), 400
 
-    # Enqueue exactly like a native signal — same queue, same retry/DIAG logging
-    send_telegram_alert(message)
-    print(f"📨 DIAG: Relay received message from HuggingFace, queued for Telegram.", flush=True)
+    override_token = data.get('bot_token')
+    override_chat_id = data.get('chat_id')
+
+    if override_token and override_chat_id:
+        # Route to a specific bot/chat (e.g. the personal bot) rather than Render's default
+        telemetry_queue.put(('telegram_raw', override_chat_id, override_token, message))
+        print(f"📨 DIAG: Relay received message for custom chat_id={override_chat_id}, queued.", flush=True)
+    else:
+        # Default: Render's own configured bot/chat
+        send_telegram_alert(message)
+        print(f"📨 DIAG: Relay received message from HuggingFace, queued for default Telegram.", flush=True)
+
     return jsonify({"status": "queued"}), 200
 
 def run_flask():
@@ -147,6 +158,35 @@ def telemetry_worker():
                         time.sleep(5 + attempt * 5)
                     if not sent:
                         print(f"❌ DIAG: Telegram send failed after 4 attempts.", flush=True)
+
+            elif task_type == 'telegram_raw':
+                _, raw_chat_id, raw_token, message = task
+                url = f"https://api.telegram.org/bot{raw_token}/sendMessage"
+                payload = {"chat_id": raw_chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
+                sent = False
+                for attempt in range(4):
+                    try:
+                        resp = _telemetry_session.post(url, json=payload, timeout=20.0)
+                        if resp.status_code == 200:
+                            print(f"✅ DIAG: Telegram (custom chat={raw_chat_id}) sent OK (HTTP 200)", flush=True)
+                            sent = True
+                            break
+                        else:
+                            print(f"🚨 DIAG REJECTED (custom chat={raw_chat_id}): HTTP {resp.status_code} | Body: {resp.text[:300]}", flush=True)
+                            break
+                    except requests.exceptions.SSLError as e:
+                        print(f"🚨 DIAG SSL_HANDSHAKE_FAILED (custom, attempt {attempt+1}/4): {e}", flush=True)
+                    except requests.exceptions.ConnectTimeout as e:
+                        print(f"🚨 DIAG CONNECT_TIMEOUT (custom, attempt {attempt+1}/4): {e}", flush=True)
+                    except requests.exceptions.ReadTimeout as e:
+                        print(f"🚨 DIAG READ_TIMEOUT (custom, attempt {attempt+1}/4): {e}", flush=True)
+                    except requests.exceptions.ConnectionError as e:
+                        print(f"🚨 DIAG CONNECTION_ERROR (custom, attempt {attempt+1}/4): {e}", flush=True)
+                    except Exception as e:
+                        print(f"🚨 DIAG UNKNOWN_ERROR (custom, attempt {attempt+1}/4): {type(e).__name__}: {e}", flush=True)
+                    time.sleep(5 + attempt * 5)
+                if not sent:
+                    print(f"❌ DIAG: Telegram (custom chat={raw_chat_id}) send failed after 4 attempts.", flush=True)
 
             elif task_type == 'notion_open':
                 _, trade_id, asset, side, entry_price, sl_price, target_price = task
