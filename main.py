@@ -14,7 +14,7 @@ import queue
 import threading
 import warnings
 from datetime import datetime
-from flask import Flask
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from urllib3.exceptions import InsecureRequestWarning
 
@@ -27,6 +27,28 @@ app = Flask('')
 @app.route('/')
 def home():
     return "🦅 GOD'S EYE ALGORITHMIC ENGINE IS ONLINE 24/7."
+
+# Shared secret so randoms on the internet can't spam your Telegram through this endpoint.
+# Set RELAY_SECRET as an env var on Render, and send the same value from HuggingFace.
+RELAY_SECRET = os.environ.get("RELAY_SECRET", "")
+
+@app.route('/webhook/relay', methods=['POST'])
+def webhook_relay():
+    """Receives trade alerts from the HuggingFace bot and forwards them to Telegram
+    using Render's outbound network (which isn't throttled, unlike HuggingFace's)."""
+    data = request.get_json(silent=True) or {}
+
+    if RELAY_SECRET and data.get('secret') != RELAY_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    message = data.get('message')
+    if not message:
+        return jsonify({"error": "missing 'message' field"}), 400
+
+    # Enqueue exactly like a native signal — same queue, same retry/DIAG logging
+    send_telegram_alert(message)
+    print(f"📨 DIAG: Relay received message from HuggingFace, queued for Telegram.", flush=True)
+    return jsonify({"status": "queued"}), 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
